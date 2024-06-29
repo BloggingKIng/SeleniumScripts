@@ -7,8 +7,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 import time
 import re
-
+import os
+import json 
 def login_facebook(email, password):
+    cookies_exist = os.path.exists(f"cookies\\{email}.json")
     service = Service(executable_path="chromedriver.exe")
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--start-maximized") 
@@ -19,12 +21,21 @@ def login_facebook(email, password):
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.get("https://www.facebook.com/")
     time.sleep(3)
-    email_input = WebDriverWait(driver,5).until(EC.presence_of_element_located((By.ID, "email")))
-    email_input.send_keys(email)
-    password_input = WebDriverWait(driver,5).until(EC.presence_of_element_located((By.ID, "pass")))
-    password_input.send_keys(password)
-    password_input.send_keys(Keys.RETURN)
-    time.sleep(60) # for approving 2 factor auth :)
+    if cookies_exist:
+        with open(f"cookies\\{email}.json") as f:
+            cookies = json.load(f)
+            for cookie in cookies:
+                driver.add_cookie(cookie)
+            driver.get("https://www.facebook.com/")
+    else:
+        email_input = WebDriverWait(driver,5).until(EC.presence_of_element_located((By.ID, "email")))
+        email_input.send_keys(email)
+        password_input = WebDriverWait(driver,5).until(EC.presence_of_element_located((By.ID, "pass")))
+        password_input.send_keys(password)
+        password_input.send_keys(Keys.RETURN)
+        time.sleep(30) # for approving 2 factor auth :)
+        with open(f"cookies\\{email}.json", "w") as f:
+            json.dump(driver.get_cookies(), f)
     return driver 
 
 def string_to_time(time_string):
@@ -50,7 +61,7 @@ def string_to_time(time_string):
     
     return value * time_units[unit]
 
-def send_reminders(driver,invites_page_url, remind_after_seconds,members_to_remind):
+def send_reminders(driver,invites_page_url, remind_after_seconds,members_to_remind, remove_after_seconds):
     driver.get(invites_page_url)
     time.sleep(3)
     members_list = driver.find_element(By.XPATH, '//div[@role="list"]')
@@ -62,6 +73,13 @@ def send_reminders(driver,invites_page_url, remind_after_seconds,members_to_remi
     while reminded < members_to_remind and tries <= 2:
         for member in members:
             try:
+                #Moving this to the top so it checks if a modal is blocking the screen beforing starting
+                try:
+                    close_btn = driver.find_element(By.XPATH, '//div[contains(translate(@aria-label,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "close")]')
+                    close_btn.click()
+                    time.sleep(1)
+                except Exception as e:
+                    pass
                 if reminded >= members_to_remind:
                     break
                 txt = member.text
@@ -90,19 +108,33 @@ def send_reminders(driver,invites_page_url, remind_after_seconds,members_to_remi
                                             btn.click()
                                             time.sleep(1)
                                             print("Successfully reminded the person!")
+                                            print()
                                             reminded += 1
                                         except Exception as e:
                                             pass
-                                    #Just in case it misses the close button
-                                    try:
-                                        close_btn = driver.find_element(By.XPATH, '//div[contains(translate(@aria-label,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "close")]')
-                                        close_btn.click()
-                                        time.sleep(1)
-                                    except Exception as e:
-                                        pass
                                 except Exception as e:
-                                    print(e)
                                     print("Seems like we have already reminded the person!")
+                                    print("Let's see if its long enough we can remove this invite so we won't have to deal with it again")
+                                    time.sleep(1)
+                                    if st_time >= remove_after_seconds:
+                                        remove_invitation = driver.find_elements(By.XPATH, f'//span[contains(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "remove")]')
+                                        for btn in remove_invitation:
+                                            try:
+                                                btn.click()
+                                            except Exception as e:
+                                                pass
+                                    time.sleep(2)
+                                    confirm_btns = driver.find_elements(By.XPATH, '//span[contains(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "confirm")]')
+                                    for btn in confirm_btns:    
+                                        try:
+                                            btn.click()
+                                            time.sleep(1)
+                                            print(f"Successfully removed invite to {member_name}")
+                                            print()
+                                            reminded += 1
+                                        except Exception as e:
+                                            pass
+                                ActionChains(driver).send_keys(Keys.ESCAPE).perform()
             except:
                 continue
         if len(already_checked_people) == prev_len:
