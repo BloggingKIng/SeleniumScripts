@@ -142,3 +142,44 @@ def send_reminders(driver,invites_page_url, remind_after_seconds,members_to_remi
         prev_len = len(already_checked_people)
         members = members_list.find_elements(By.XPATH, "//div[@role='listitem']")
 
+
+def invite_people(driver, group_invites_page_url, max_members_to_invite):
+    driver.get(group_invites_page_url)
+    time.sleep(2)
+    invite_btn = driver.find_elements(By.XPATH, '//span[contains(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "invite")]')
+    for btns in invite_btn:
+        try:
+            btns.click()
+            break
+        except:
+            pass
+    try:
+        invite_facebook = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.XPATH, '//span[contains(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "invite facebook friends")]') ))
+        invite_facebook.click()
+    except:
+        pass
+    checkbox = driver.find_elements(By.XPATH, '//div[@role="checkbox" and @aria-checked="false"]')
+    tries = 0
+    invite = 0
+    while invite < max_members_to_invite and tries <= 2:
+        for chk in checkbox:
+            try:
+                chk.location_once_scrolled_into_view
+                chk.click()
+                invite += 1
+                time.sleep(1)
+            except Exception as e:
+                print(e)
+            
+            if invite >= max_members_to_invite:
+                break
+        
+        time.sleep(2)
+        checkbox = driver.find_elements(By.XPATH, '//div[@role="checkbox" and @aria-checked="false"]')
+        if invite == len(checkbox):
+            tries += 1
+
+    send_btn = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.XPATH, '//span[contains(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"), "send invitation")]')))
+    send_btn.click()
+    print(f"Successfully invited {invite} members!")
+    time.sleep(10)
